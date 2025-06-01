@@ -5,6 +5,7 @@ import time
 import json
 import os
 from datetime import datetime
+import math
 
 pygame.init()
 
@@ -13,16 +14,28 @@ DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
 CELL_SIZE = 25
 SCORES_FILE = "scores.json"
-MENU_BG = (50, 50, 50, 200)
+MENU_BG = (20, 20, 30, 230)
+
+# Set window icon
+icon_path = os.path.join("assets", "icon.png")
+if os.path.exists(icon_path):
+    icon = pygame.image.load(icon_path)
+    pygame.display.set_icon(icon)
 
 # Colors
 BLACK = (0, 0, 0)
-GREEN = (0, 255, 0)
-RED = (255, 0, 0)
+GREEN = (50, 205, 50)
+RED = (255, 69, 0)
 WHITE = (255, 255, 255)
-BLUE = (0, 0, 255)
+BLUE = (30, 144, 255)
 GRAY = (128, 128, 128)
 LIGHT_GRAY = (200, 200, 200)
+DARK_BLUE = (25, 25, 112)
+GOLD = (255, 215, 0)
+GRID_COLOR = (40, 40, 40)
+NEON_BLUE = (0, 255, 255)
+NEON_PINK = (255, 16, 240)
+NEON_GREEN = (57, 255, 20)
 
 # Screen size options
 SCREEN_SIZES = [
@@ -36,9 +49,31 @@ SCREEN_SIZES = [
 screen = pygame.display.set_mode((DEFAULT_WIDTH, DEFAULT_HEIGHT))
 pygame.display.set_caption("Smart Snake Game")
 clock = pygame.time.Clock()
-font = pygame.font.SysFont("Arial", 24)
-menu_font = pygame.font.SysFont("Arial", 32)
-small_font = pygame.font.SysFont("Arial", 16)
+font = pygame.font.SysFont("Arial", 24, bold=True)
+menu_font = pygame.font.SysFont("Arial", 32, bold=True)
+small_font = pygame.font.SysFont("Arial", 16, bold=True)
+
+class Particle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.size = random.randint(2, 4)
+        self.life = 1.0
+        self.speed = random.uniform(1, 3)
+        self.angle = random.uniform(0, 2 * math.pi)
+
+    def update(self):
+        self.x += math.cos(self.angle) * self.speed
+        self.y += math.sin(self.angle) * self.speed
+        self.life -= 0.02
+        self.size = max(0, self.size - 0.1)
+
+    def draw(self, surface):
+        if self.life > 0:
+            alpha = int(self.life * 255)
+            color = (*self.color[:3], alpha)
+            pygame.draw.circle(surface, color, (int(self.x), int(self.y)), int(self.size))
 
 class Button:
     def __init__(self, x, y, width, height, text, action=None):
@@ -46,15 +81,40 @@ class Button:
         self.text = text
         self.action = action
         self.is_hovered = False
+        self.animation_offset = 0
+        self.animation_speed = 0.2
+        self.particles = []
 
     def draw(self, surface):
-        color = LIGHT_GRAY if self.is_hovered else WHITE
-        pygame.draw.rect(surface, color, self.rect)
-        pygame.draw.rect(surface, BLACK, self.rect, 2)
+        if self.is_hovered:
+            self.animation_offset = min(self.animation_offset + self.animation_speed, 1)
+            if random.random() < 0.1:
+                self.particles.append(Particle(
+                    random.randint(self.rect.left, self.rect.right),
+                    random.randint(self.rect.top, self.rect.bottom),
+                    NEON_BLUE
+                ))
+        else:
+            self.animation_offset = max(self.animation_offset - self.animation_speed, 0)
+
+        color = self.lerp_color(LIGHT_GRAY, NEON_BLUE, self.animation_offset)
+        border_color = self.lerp_color(GRAY, WHITE, self.animation_offset)
+        
+        pygame.draw.rect(surface, color, self.rect, border_radius=10)
+        pygame.draw.rect(surface, border_color, self.rect, 2, border_radius=10)
         
         text_surface = menu_font.render(self.text, True, BLACK)
         text_rect = text_surface.get_rect(center=self.rect.center)
         surface.blit(text_surface, text_rect)
+
+        # Update and draw particles
+        self.particles = [p for p in self.particles if p.life > 0]
+        for particle in self.particles:
+            particle.update()
+            particle.draw(surface)
+
+    def lerp_color(self, color1, color2, t):
+        return tuple(int(c1 + (c2 - c1) * t) for c1, c2 in zip(color1, color2))
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
@@ -65,18 +125,79 @@ class Button:
                 return True
         return False
 
+def draw_grid():
+    for x in range(0, WIDTH, CELL_SIZE):
+        alpha = int(128 + 127 * math.sin(time.time() * 2 + x * 0.01))
+        color = (*GRID_COLOR[:3], alpha)
+        pygame.draw.line(screen, color, (x, 0), (x, HEIGHT))
+    for y in range(0, HEIGHT, CELL_SIZE):
+        alpha = int(128 + 127 * math.sin(time.time() * 2 + y * 0.01))
+        color = (*GRID_COLOR[:3], alpha)
+        pygame.draw.line(screen, color, (0, y), (WIDTH, y))
+
+def is_safe_move(head, snake_body):
+    if (head[0] < 0 or head[0] >= WIDTH or
+        head[1] < 0 or head[1] >= HEIGHT):
+        return False
+    
+    if head in snake_body:
+        return False
+    
+    return True
+
+def draw_snake(snake):
+    for i, segment in enumerate(snake):
+        if i == 0:
+            color = NEON_BLUE
+            pygame.draw.rect(screen, color, pygame.Rect(segment[0], segment[1], CELL_SIZE, CELL_SIZE), border_radius=5)
+            pygame.draw.rect(screen, WHITE, pygame.Rect(segment[0], segment[1], CELL_SIZE, CELL_SIZE), 2, border_radius=5)
+        else:
+            color = NEON_GREEN
+            pygame.draw.rect(screen, color, pygame.Rect(segment[0], segment[1], CELL_SIZE, CELL_SIZE), border_radius=3)
+
+def draw_food(pos):
+    radius = CELL_SIZE//2
+    center = (pos[0] + radius, pos[1] + radius)
+    
+    # Draw glow effect
+    for r in range(radius + 5, radius - 5, -1):
+        alpha = int(255 * (1 - (r - radius + 5) / 10))
+        color = (*NEON_PINK[:3], alpha)
+        pygame.draw.circle(screen, color, center, r)
+    
+    # Draw main food circle
+    pygame.draw.circle(screen, NEON_PINK, center, radius)
+    pygame.draw.circle(screen, WHITE, center, radius, 2)
+
+def draw_score_and_time(score, elapsed_time):
+    # Draw score with glow effect
+    score_bg = pygame.Surface((200, 40), pygame.SRCALPHA)
+    score_bg.fill((0, 0, 0, 128))
+    screen.blit(score_bg, (10, 10))
+    
+    score_text = font.render(f"Score: {score}", True, NEON_BLUE)
+    screen.blit(score_text, (20, 15))
+    
+    # Draw time with glow effect
+    time_bg = pygame.Surface((200, 40), pygame.SRCALPHA)
+    time_bg.fill((0, 0, 0, 128))
+    screen.blit(time_bg, (220, 10))
+    
+    minutes = int(elapsed_time // 60)
+    seconds = int(elapsed_time % 60)
+    time_text = font.render(f"Time: {minutes:02d}:{seconds:02d}", True, NEON_BLUE)
+    screen.blit(time_text, (230, 15))
+
 def draw_pause_menu(buttons):
-    # Create semi-transparent overlay
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill(MENU_BG)
     screen.blit(overlay, (0, 0))
     
-    # Draw menu title
-    title = menu_font.render("PAUSED", True, WHITE)
+    # Draw animated title
+    title = menu_font.render("PAUSED", True, NEON_BLUE)
     title_rect = title.get_rect(center=(WIDTH//2, HEIGHT//4))
     screen.blit(title, title_rect)
     
-    # Draw buttons
     for button in buttons:
         button.draw(screen)
 
@@ -126,27 +247,22 @@ def show_leaderboard():
         with open(scores_file, 'r') as f:
             scores = json.load(f)
         
-        # Create semi-transparent overlay
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         overlay.fill(MENU_BG)
         screen.blit(overlay, (0, 0))
         
-        # Draw title
-        title = menu_font.render("LEADERBOARD", True, WHITE)
+        title = menu_font.render("LEADERBOARD", True, GOLD)
         title_rect = title.get_rect(center=(WIDTH//2, 50))
         screen.blit(title, title_rect)
         
-        # Calculate column positions based on screen width
         col_width = WIDTH // 4
         x_positions = [col_width * i + col_width//4 for i in range(4)]
         
-        # Draw headers
         headers = ["Rank", "Score", "Time", "Date"]
         for i, header in enumerate(headers):
-            header_text = small_font.render(header, True, WHITE)
+            header_text = small_font.render(header, True, GOLD)
             screen.blit(header_text, (x_positions[i], 100))
         
-        # Draw scores
         for i, score_data in enumerate(scores):
             y_pos = 130 + i * 30
             rank = small_font.render(str(i + 1), True, WHITE)
@@ -159,13 +275,11 @@ def show_leaderboard():
             screen.blit(time_str, (x_positions[2], y_pos))
             screen.blit(date, (x_positions[3], y_pos))
         
-        # Draw back button
         back_button = Button(WIDTH//2 - 100, HEIGHT - 50, 200, 40, "Back", lambda: None)
         back_button.draw(screen)
         
         pygame.display.flip()
         
-        # Wait for back button click
         waiting = True
         while waiting:
             for event in pygame.event.get():
@@ -182,12 +296,10 @@ def show_leaderboard():
         print(f"Error showing leaderboard: {e}")
 
 def show_about():
-    # Create semi-transparent overlay
     overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
     overlay.fill(MENU_BG)
     screen.blit(overlay, (0, 0))
     
-    # About text
     about_text = [
         "Smart Snake Game",
         "",
@@ -208,24 +320,20 @@ def show_about():
         "Created with Pygame"
     ]
     
-    # Draw title
-    title = menu_font.render("ABOUT", True, WHITE)
+    title = menu_font.render("ABOUT", True, GOLD)
     title_rect = title.get_rect(center=(WIDTH//2, 50))
     screen.blit(title, title_rect)
     
-    # Draw about text
     for i, line in enumerate(about_text):
         text = small_font.render(line, True, WHITE)
         text_rect = text.get_rect(center=(WIDTH//2, 150 + i * 25))
         screen.blit(text, text_rect)
     
-    # Draw back button
     back_button = Button(WIDTH//2 - 100, HEIGHT - 50, 200, 40, "Back", lambda: None)
     back_button.draw(screen)
     
     pygame.display.flip()
     
-    # Wait for back button click
     waiting = True
     while waiting:
         for event in pygame.event.get():
@@ -244,47 +352,6 @@ def get_food_position(snake):
                random.randint(0, (HEIGHT - CELL_SIZE) // CELL_SIZE) * CELL_SIZE)
         if pos not in snake:
             return pos
-
-def draw_snake(snake):
-    for i, segment in enumerate(snake):
-        color = BLUE if i == 0 else GREEN  # Head is blue, body is green
-        pygame.draw.rect(screen, color, pygame.Rect(segment[0], segment[1], CELL_SIZE, CELL_SIZE))
-
-def draw_food(pos):
-    pygame.draw.rect(screen, RED, pygame.Rect(pos[0], pos[1], CELL_SIZE, CELL_SIZE))
-
-def draw_score_and_time(score, elapsed_time):
-    # Draw score
-    score_text = font.render(f"Score: {score}", True, WHITE)
-    screen.blit(score_text, (10, 10))
-    
-    # Draw time
-    minutes = int(elapsed_time // 60)
-    seconds = int(elapsed_time % 60)
-    time_text = font.render(f"Time: {minutes:02d}:{seconds:02d}", True, WHITE)
-    screen.blit(time_text, (150, 10))
-
-def draw_menu(buttons):
-    # Draw menu background
-    menu_rect = pygame.Rect(0, 0, WIDTH, 30)
-    pygame.draw.rect(screen, LIGHT_GRAY, menu_rect)
-    pygame.draw.line(screen, BLACK, (0, 30), (WIDTH, 30), 2)
-    
-    # Draw buttons
-    for button in buttons:
-        button.draw(screen)
-
-def is_safe_move(head, snake_body):
-    # Check if the move is within bounds
-    if (head[0] < 0 or head[0] >= WIDTH or
-        head[1] < 0 or head[1] >= HEIGHT):
-        return False
-    
-    # Check if the move collides with snake body
-    if head in snake_body:
-        return False
-    
-    return True
 
 def get_next_move(snake, food_pos):
     head = snake[0]
@@ -324,12 +391,25 @@ def get_next_move(snake, food_pos):
     return best_move
 
 def game_over():
-    text = font.render("Game Over! Press ESC to Quit", True, RED)
-    screen.blit(text, (WIDTH // 2 - 150, HEIGHT // 2))
+    overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    screen.blit(overlay, (0, 0))
+    
+    text = menu_font.render("Game Over!", True, NEON_PINK)
+    text_rect = text.get_rect(center=(WIDTH//2, HEIGHT//2 - 50))
+    screen.blit(text, text_rect)
+    
+    score_text = font.render(f"Final Score: {score}", True, NEON_BLUE)
+    score_rect = score_text.get_rect(center=(WIDTH//2, HEIGHT//2))
+    screen.blit(score_text, score_rect)
+    
+    exit_text = font.render("Press ESC to Quit", True, WHITE)
+    exit_rect = exit_text.get_rect(center=(WIDTH//2, HEIGHT//2 + 50))
+    screen.blit(exit_text, exit_rect)
+    
     pygame.display.flip()
     pygame.time.wait(1000)
     
-    # Save the final score
     save_score(score, time.time() - start_time)
     
     while True:
@@ -378,12 +458,12 @@ def show_settings():
     screen.blit(overlay, (0, 0))
     
     # Draw title
-    title = menu_font.render("SETTINGS", True, WHITE)
+    title = menu_font.render("SETTINGS", True, GOLD)
     title_rect = title.get_rect(center=(WIDTH//2, 50))
     screen.blit(title, title_rect)
     
     # Draw screen size options
-    size_text = small_font.render("Screen Size:", True, WHITE)
+    size_text = small_font.render("Screen Size:", True, GOLD)
     screen.blit(size_text, (WIDTH//2 - 100, 150))
     
     # Create size option buttons
@@ -529,7 +609,8 @@ def main():
                     last_move_time = current_time
 
             # Draw everything
-            screen.fill(BLACK)
+            screen.fill(DARK_BLUE)
+            draw_grid()
             draw_snake(snake)
             draw_food(food_pos)
             draw_score_and_time(score, elapsed_time)
