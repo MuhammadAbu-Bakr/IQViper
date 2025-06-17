@@ -9,14 +9,14 @@ import math
 
 pygame.init()
 
-# Constants
+
 DEFAULT_WIDTH = 800
 DEFAULT_HEIGHT = 600
 CELL_SIZE = 25
 SCORES_FILE = "scores.json"
 MENU_BG = (20, 20, 30, 230)
 
-# Set window icon
+
 icon_path = os.path.join("assets", "icon.png")
 if os.path.exists(icon_path):
     icon = pygame.image.load(icon_path)
@@ -37,7 +37,7 @@ NEON_BLUE = (0, 255, 255)
 NEON_PINK = (255, 16, 240)
 NEON_GREEN = (57, 255, 20)
 
-# Screen size options
+
 SCREEN_SIZES = [
     (800, 600),   # Default
     (1024, 768),  # Medium
@@ -107,7 +107,7 @@ class Button:
         text_rect = text_surface.get_rect(center=self.rect.center)
         surface.blit(text_surface, text_rect)
 
-        # Update and draw particles
+        
         self.particles = [p for p in self.particles if p.life > 0]
         for particle in self.particles:
             particle.update()
@@ -328,15 +328,28 @@ def show_about():
     title_rect = title.get_rect(center=(WIDTH//2, 50))
     screen.blit(title, title_rect)
     
+    
+    line_height = 25
+    total_content_height = len(about_text) * line_height
+    visible_height = HEIGHT - 200  
+    
+    
+    scroll_y = 0
+    max_scroll = max(0, total_content_height - visible_height)
+    
+    
+    content_width = min(WIDTH - 200, 600)  
+    content_surface = pygame.Surface((content_width, total_content_height), pygame.SRCALPHA)
+    content_surface.fill((0, 0, 0, 0))
+    
+    
     for i, line in enumerate(about_text):
         text = small_font.render(line, True, WHITE)
-        text_rect = text.get_rect(center=(WIDTH//2, 150 + i * 25))
-        screen.blit(text, text_rect)
+        text_rect = text.get_rect(center=(content_width//2, i * line_height + line_height//2))
+        content_surface.blit(text, text_rect)
+    
     
     back_button = Button(WIDTH//2 - 100, HEIGHT - 50, 200, 40, "Back", lambda: None)
-    back_button.draw(screen)
-    
-    pygame.display.flip()
     
     waiting = True
     while waiting:
@@ -344,11 +357,33 @@ def show_about():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                waiting = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    waiting = False
+                elif event.key == pygame.K_UP:
+                    scroll_y = max(0, scroll_y - line_height)
+                elif event.key == pygame.K_DOWN:
+                    scroll_y = min(max_scroll, scroll_y + line_height)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if back_button.rect.collidepoint(event.pos):
                     waiting = False
+                elif event.button == 4:  # Mouse wheel up
+                    scroll_y = max(0, scroll_y - line_height)
+                elif event.button == 5:  # Mouse wheel down
+                    scroll_y = min(max_scroll, scroll_y + line_height)
+        
+        # Draw everything
+        screen.blit(overlay, (0, 0))
+        screen.blit(title, title_rect)
+        
+        # Draw scrollable content centered
+        content_x = (WIDTH - content_width) // 2
+        visible_rect = pygame.Rect(0, 0, content_width, visible_height)
+        screen.blit(content_surface, (content_x, 150 - scroll_y), visible_rect)
+        
+        back_button.draw(screen)
+        pygame.display.flip()
+        clock.tick(60)
 
 def get_food_position(snake):
     while True:
