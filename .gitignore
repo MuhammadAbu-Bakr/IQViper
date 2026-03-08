@@ -208,3 +208,5 @@ ENV/
 # Project specific
 *.pl.swp
 *.pl.swo
+
+Report.txt

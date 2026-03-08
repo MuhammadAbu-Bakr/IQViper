@@ -2,6 +2,11 @@
 
 A Snake game implementation with an AI agent powered by Prolog for intelligent decision making. This hybrid system demonstrates how symbolic reasoning (via SWI-Prolog) can be used to navigate the classic Snake game through Python.
 
+## Screenshot
+![icon](assets/icon.png)   
+![Menu](assets/screenshot/Menu.png)   
+![Play](assets/screenshot/Play.png)   
+
 ## Setup
 
 1. Install Python dependencies:
